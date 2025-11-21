@@ -71,6 +71,7 @@ with col4:
 st.markdown("---")
 
 # Calculate button logic
+# Calculate button logic
 if calculate_button:
     # EU Totals
     S_EU = stock_de + stock_fr + stock_es + stock_it
@@ -111,11 +112,11 @@ if calculate_button:
             return 0
         woc = s_eu / f_eu
         
-        # Units sold per MP (proportional to forecast, limited by local stock)
-        units_de = min(s_de, f_de * woc) if s_de > 0 else f_de * woc
-        units_fr = min(s_fr, f_fr * woc) if s_fr > 0 else f_fr * woc
-        units_es = min(s_es, f_es * woc) if s_es > 0 else f_es * woc
-        units_it = min(s_it, f_it * woc) if s_it > 0 else f_it * woc
+        # Units sold per MP (proportional to forecast)
+        units_de = f_de * woc
+        units_fr = f_fr * woc
+        units_es = f_es * woc
+        units_it = f_it * woc
         
         # Calculate CP (with OOR penalty for zero-stock MPs)
         cp_de = units_de * c_de
@@ -194,11 +195,22 @@ if calculate_button:
             if decision == "TURN_OFF":
                 F_EU_remaining -= mp["forecast"]
         
+        # ============= FIX 1: Calculate active MPs correctly =============
+        # Start with all MPs
+        all_mps = ["DE", "FR", "ES", "IT"]
+        
+        # Get turned off MPs
+        turned_off = [d['MP'] for d in decisions if d['Decision'] == 'TURN_OFF']
+        
+        # Active MPs = all MPs minus turned off ones
+        kept_active = [mp for mp in all_mps if mp not in turned_off]
+        # ================================================================
+        
         # Calculate CP AFTER optimization
-        active_forecast_de = forecast_de if stock_de > 0 or not any(d["MP"] == "DE" and d["Decision"] == "TURN_OFF" for d in decisions) else 0
-        active_forecast_fr = forecast_fr if stock_fr > 0 or not any(d["MP"] == "FR" and d["Decision"] == "TURN_OFF" for d in decisions) else 0
-        active_forecast_es = forecast_es if stock_es > 0 or not any(d["MP"] == "ES" and d["Decision"] == "TURN_OFF" for d in decisions) else 0
-        active_forecast_it = forecast_it if stock_it > 0 or not any(d["MP"] == "IT" and d["Decision"] == "TURN_OFF" for d in decisions) else 0
+        active_forecast_de = forecast_de if "DE" in kept_active else 0
+        active_forecast_fr = forecast_fr if "FR" in kept_active else 0
+        active_forecast_es = forecast_es if "ES" in kept_active else 0
+        active_forecast_it = forecast_it if "IT" in kept_active else 0
         
         f_total_after = active_forecast_de + active_forecast_fr + active_forecast_es + active_forecast_it
         
@@ -262,8 +274,6 @@ if calculate_button:
         st.subheader("🎯 Final State After Optimization")
         
         final_woc = S_EU / F_EU_remaining if F_EU_remaining > 0 else 999
-        turned_off = [d['MP'] for d in decisions if d['Decision'] == 'TURN_OFF']
-        kept_active = [d['MP'] for d in decisions if d['Decision'] == 'KEEP_ACTIVE']
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -273,26 +283,33 @@ if calculate_button:
         with col3:
             st.metric("Turned Off MPs", ", ".join(turned_off) if turned_off else "None")
         with col4:
-            st.metric("Active MPs", ", ".join(kept_active) if kept_active else "All")
+            st.metric("Active MPs", ", ".join(kept_active))  # ← FIX: Removed "if kept_active else All"
         
         # ==================== COMPARISON TABLE ====================
         st.markdown("---")
         st.subheader("📊 Before vs After Comparison Table")
         
-        # Calculate CBF units
+        # ============= FIX 3: Better explanation of CBF calculation =============
+        # CBF units BEFORE: All units sold to zero-stock MPs require cross-border shipment
         cbf_units_before = 0
         if stock_es == 0:
-            cbf_units_before += (forecast_es * WoC_EU)
+            cbf_units_before += (forecast_es * WoC_EU)  # ES demand × weeks of stock
         if stock_it == 0:
-            cbf_units_before += (forecast_it * WoC_EU)
+            cbf_units_before += (forecast_it * WoC_EU)  # IT demand × weeks of stock
         if stock_de == 0:
             cbf_units_before += (forecast_de * WoC_EU)
         if stock_fr == 0:
             cbf_units_before += (forecast_fr * WoC_EU)
         
-        cbf_units_after = 0  # All turned-off MPs won't have CBF
+        # CBF units AFTER: Only active zero-stock MPs need CBF (turned-off MPs = 0 CBF)
+        cbf_units_after = 0
+        for mp_name, stock, forecast in [("DE", stock_de, forecast_de), ("FR", stock_fr, forecast_fr), 
+                                          ("ES", stock_es, forecast_es), ("IT", stock_it, forecast_it)]:
+            if stock == 0 and mp_name in kept_active:  # Zero stock AND still active
+                cbf_units_after += (forecast * final_woc)
+        # ========================================================================
         
-        cbf_savings = cbf_units_before * oor_cost
+        cbf_savings = (cbf_units_before - cbf_units_after) * oor_cost
         cp_improvement = cp_after - cp_before
         cp_improvement_pct = (cp_improvement / cp_before * 100) if cp_before > 0 else 0
         
@@ -312,7 +329,7 @@ if calculate_button:
                 f"{F_EU:.1f}",
                 f"{WoC_EU:.2f}",
                 "DE, FR, ES, IT",
-                f"{cbf_units_before:.0f}",
+                f"{cbf_units_before:.0f}",  # ← FIX 2: Integer display
                 f"${cbf_units_before * oor_cost:.2f}",
                 f"${cp_before:.2f}",
                 "-"
@@ -321,8 +338,8 @@ if calculate_button:
                 f"{S_EU:.0f}",
                 f"{F_EU_remaining:.1f}",
                 f"{final_woc:.2f}",
-                ", ".join(kept_active) if kept_active else "All",
-                f"{cbf_units_after:.0f}",
+                ", ".join(kept_active),  # ← FIX 1: Now correct
+                f"{cbf_units_after:.0f}",  # ← FIX 2: Integer display
                 f"${cbf_units_after * oor_cost:.2f}",
                 f"${cp_after:.2f}",
                 f"+${cp_improvement:.2f} ({cp_improvement_pct:+.1f}%)"
@@ -332,7 +349,7 @@ if calculate_button:
                 f"{F_EU_remaining - F_EU:.1f}",
                 f"{final_woc - WoC_EU:+.2f}",
                 f"{len(turned_off)} turned off",
-                f"{cbf_units_after - cbf_units_before:.0f}",
+                f"{int(cbf_units_after - cbf_units_before)}",  # ← FIX 2: Integer
                 f"-${cbf_savings:.2f}",
                 f"+${cp_improvement:.2f}",
                 f"{cp_improvement_pct:+.1f}%"
@@ -347,7 +364,7 @@ if calculate_button:
         with col1:
             st.metric("💰 CP Improvement", f"${cp_improvement:.2f}", delta=f"{cp_improvement_pct:+.1f}%")
         with col2:
-            st.metric("📦 CBF Units Avoided", f"{cbf_units_before - cbf_units_after:.0f}", delta=f"-{((cbf_units_before - cbf_units_after) / cbf_units_before * 100) if cbf_units_before > 0 else 0:.1f}%")
+            st.metric("📦 CBF Units Avoided", f"{int(cbf_units_before - cbf_units_after)}", delta=f"-{((cbf_units_before - cbf_units_after) / cbf_units_before * 100) if cbf_units_before > 0 else 0:.1f}%")
         with col3:
             st.metric("💵 OOR Cost Saved", f"${cbf_savings:.2f}", delta="Savings")
         
@@ -405,9 +422,9 @@ if calculate_button:
                 cp_breakdown_before.append(cp_mp_before)
                 
                 # After
-                is_active = mp_name in kept_active or stock > 0
+                is_active = mp_name in kept_active
                 if is_active and f_total_after > 0:
-                    forecast_after = forecast if mp_name in kept_active or stock > 0 else 0
+                    forecast_after = forecast if mp_name in kept_active else 0
                     units_after = (forecast_after / f_total_after * S_EU)
                     cp_mp_after = units_after * cppu
                 else:
@@ -537,8 +554,8 @@ if calculate_button:
                 "Forecast": forecast,
                 "CPPU": f"${cppu:.2f}",
                 "Status": "❌ Turned Off" if is_turned_off else "✅ Active",
-                "Units Sold (Before)": f"{units_sold_before:.1f}",
-                "Units Sold (After)": f"{units_sold_after:.1f}",
+                "Units Sold (Before)": f"{int(units_sold_before)}",  # ← FIX 2: Integer
+                "Units Sold (After)": f"{int(units_sold_after)}",   # ← FIX 2: Integer
                 "CP Before": f"${cp_before_mp:.2f}",
                 "CP After": f"${cp_after_mp:.2f}",
                 "CP Change": f"+${cp_after_mp - cp_before_mp:.2f}"
@@ -546,6 +563,56 @@ if calculate_button:
         
         df_detailed = pd.DataFrame(detailed_metrics)
         st.dataframe(df_detailed, use_container_width=True, hide_index=True)
+        
+        # ============= FIX 3: Add explanation box for OOR calculation =============
+        with st.expander("ℹ️ How are Cross-Border (OOR) Units Calculated?", expanded=False):
+            st.markdown("""
+            ### Before NRP:
+            **Cross-border units** = Units sold to marketplaces with **zero stock**
+            
+            **Formula:** `CBF Units = Forecast × WoC` for each zero-stock MP
+            
+            **Example (Current Scenario):**
+            """)
+            
+            if stock_es == 0 or stock_it == 0:
+                explanation_data = []
+                if stock_es == 0:
+                    explanation_data.append({
+                        "MP": "ES",
+                        "Stock": 0,
+                        "Forecast": f"{forecast_es} units/week",
+                        "WoC": f"{WoC_EU:.2f} weeks",
+                        "Calculation": f"{forecast_es} × {WoC_EU:.2f}",
+                        "CBF Units": f"{forecast_es * WoC_EU:.1f}"
+                    })
+                if stock_it == 0:
+                    explanation_data.append({
+                        "MP": "IT",
+                        "Stock": 0,
+                        "Forecast": f"{forecast_it} units/week",
+                        "WoC": f"{WoC_EU:.2f} weeks",
+                        "Calculation": f"{forecast_it} × {WoC_EU:.2f}",
+                        "CBF Units": f"{forecast_it * WoC_EU:.1f}"
+                    })
+                
+                df_explanation = pd.DataFrame(explanation_data)
+                st.dataframe(df_explanation, use_container_width=True, hide_index=True)
+                
+                st.markdown(f"""
+                **Total CBF Before NRP:** {cbf_units_before:.1f} units
+                
+                **Why?** These MPs have no local stock, so ALL customer orders must be fulfilled 
+                from other countries (DE/FR with stock), incurring ${oor_cost:.2f} extra shipping cost per unit.
+                
+                ### After NRP:
+                When we **turn off** zero-stock MPs, their customers can't order anymore, so:
+                - **CBF units = 0** for turned-off MPs
+                - **Savings = {cbf_units_before:.1f} units × ${oor_cost:.2f} = ${cbf_units_before * oor_cost:.2f}**
+                """)
+            else:
+                st.info("All marketplaces have stock, so no cross-border shipments needed!")
+        # =========================================================================
         
         # Summary insights
         st.markdown("---")
@@ -565,7 +632,7 @@ if calculate_button:
             insights.append(f"💰 **CP impact: ${cp_improvement:.2f}** - optimization may reduce profit")
         
         if cbf_savings > 0:
-            insights.append(f"📦 **Avoided {cbf_units_before:.0f} cross-border shipments**, saving ${cbf_savings:.2f}")
+            insights.append(f"📦 **Avoided {int(cbf_units_before - cbf_units_after)} cross-border shipments**, saving ${cbf_savings:.2f}")
         
         if final_woc < T_arrival_weeks or T_arrival_weeks >= 999:
             insights.append(f"✅ **Stock will deplete before next PO arrival** - no revenue loss risk")
