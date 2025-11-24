@@ -45,25 +45,25 @@ st.subheader("📊 Marketplace Input Parameters")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.markdown("### 🇩🇪 Germany (DE)")
+    st.markdown("### Germany (DE)")
     stock_de = st.number_input("Stock (units)", value=120, key="stock_de", label_visibility="visible")
     forecast_de = st.number_input("Weekly Forecast", value=30, key="forecast_de", label_visibility="visible")
     cppu_de = st.number_input("CPPU ($)", value=3.00, step=0.1, key="cppu_de", label_visibility="visible")
 
 with col2:
-    st.markdown("### 🇫🇷 France (FR)")
+    st.markdown("### France (FR)")
     stock_fr = st.number_input("Stock (units)", value=80, key="stock_fr", label_visibility="visible")
     forecast_fr = st.number_input("Weekly Forecast", value=25, key="forecast_fr", label_visibility="visible")
     cppu_fr = st.number_input("CPPU ($)", value=2.80, step=0.1, key="cppu_fr", label_visibility="visible")
 
 with col3:
-    st.markdown("### 🇪🇸 Spain (ES)")
+    st.markdown("### Spain (ES)")
     stock_es = st.number_input("Stock (units)", value=0, key="stock_es", label_visibility="visible")
     forecast_es = st.number_input("Weekly Forecast", value=15, key="forecast_es", label_visibility="visible")
     cppu_es = st.number_input("CPPU ($)", value=2.00, step=0.1, key="cppu_es", label_visibility="visible")
 
 with col4:
-    st.markdown("### 🇮🇹 Italy (IT)")
+    st.markdown("### Italy (IT)")
     stock_it = st.number_input("Stock (units)", value=0, key="stock_it", label_visibility="visible")
     forecast_it = st.number_input("Weekly Forecast", value=10, key="forecast_it", label_visibility="visible")
     cppu_it = st.number_input("CPPU ($)", value=1.80, step=0.1, key="cppu_it", label_visibility="visible")
